@@ -1,0 +1,344 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drone Earth</title>
+<script src="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Cesium.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/cesium@1.120.0/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--glass:rgba(12,16,24,.62);--line:rgba(255,255,255,.12);--txt:#f4f6fb;--dim:#9aa4b8;--acc:#4f8cff;--acc2:#7c5cff;--good:#3ddc84;--bad:#ff5a5f}
+*{box-sizing:border-box}
+html,body,#v{margin:0;width:100%;height:100%;overflow:hidden;background:#05070c;font-family:Inter,system-ui,sans-serif;color:var(--txt)}
+.glass{background:var(--glass);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);border:1px solid var(--line);border-radius:16px}
+.hide{display:none!important}
+
+/* ---------- start screen ---------- */
+#menu{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(1200px 600px at 50% -10%,rgba(79,140,255,.35),transparent 60%),
+             radial-gradient(900px 500px at 100% 110%,rgba(124,92,255,.25),transparent 60%),rgba(5,7,12,.82);
+  backdrop-filter:blur(6px)}
+#menu.over{background:rgba(5,7,12,.55)} /* when reopened mid-flight, let the world show through */
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.logo{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:24px;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 30px rgba(79,140,255,.45)}
+h1{margin:0;font-size:40px;font-weight:800;letter-spacing:-.03em}
+.tag{color:var(--dim);font-size:16px;margin:0 0 28px}
+.searchWrap{position:relative;width:min(620px,100%)}
+.search{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 18px;border-radius:18px;
+  background:rgba(255,255,255,.96);box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.search svg{flex:none;color:#6b7280}
+#addr{flex:1;border:0;outline:0;background:transparent;font:500 17px Inter,sans-serif;color:#111;padding:12px 0;min-width:0}
+#goBtn{border:0;border-radius:13px;padding:13px 22px;font:700 15px Inter,sans-serif;color:#fff;cursor:pointer;
+  background:linear-gradient(135deg,var(--acc),var(--acc2));transition:transform .1s,filter .15s}
+#goBtn:hover{filter:brightness(1.1)} #goBtn:active{transform:scale(.97)}
+#sugg{position:absolute;left:0;right:0;top:calc(100% + 8px);border-radius:16px;overflow:hidden;z-index:5;
+  background:#fff;color:#111;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+#sugg:empty{display:none}
+.opt{display:flex;align-items:center;gap:12px;padding:11px 16px;cursor:pointer;border-top:1px solid #f0f1f4}
+.opt:first-child{border-top:0}
+.opt.on,.opt:hover{background:#eef3ff}
+.pin{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#f1f3f7;font-size:16px}
+.opt .t{font-weight:600;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt .s{font-size:13px;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt .mid{flex:1;min-width:0}
+.src{flex:none;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:#e8f0ff;color:#2f63d6}
+#err{min-height:22px;margin-top:14px;font-size:14px;color:var(--bad)}
+.keys{margin-top:26px;display:grid;grid-template-columns:repeat(4,auto);gap:10px 22px;padding:16px 22px;font-size:13px;color:var(--dim)}
+.keys div{display:flex;align-items:center;gap:8px;white-space:nowrap}
+kbd{font:600 12px Inter,sans-serif;color:var(--txt);background:rgba(255,255,255,.1);border:1px solid var(--line);
+  border-bottom-width:2px;border-radius:7px;padding:3px 7px;min-width:24px;text-align:center}
+@media (max-width:700px){.keys{grid-template-columns:repeat(2,auto)} h1{font-size:30px}}
+
+/* ---------- loading ---------- */
+#loading{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+  background:rgba(5,7,12,.55);backdrop-filter:blur(8px)}
+.spin{width:54px;height:54px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:var(--acc);animation:sp 0.9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#loadTxt{font-size:18px;font-weight:600} #loadSub{color:var(--dim);font-size:14px;margin-top:-10px}
+
+/* ---------- in-flight HUD ---------- */
+#hud{position:fixed;top:16px;left:16px;padding:14px 18px;min-width:190px;z-index:10}
+.big{font-size:38px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.big small{font-size:14px;font-weight:600;color:var(--dim);margin-left:4px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;margin-top:12px}
+.stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
+.stat .n{font-size:18px;font-weight:700}
+.bar{height:4px;border-radius:99px;background:rgba(255,255,255,.12);margin-top:12px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--good),#9cff6b);width:0;transition:width .3s}
+#place{position:fixed;top:16px;right:16px;padding:10px 14px;font-size:13px;color:var(--dim);max-width:40vw;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:10}
+#place b{color:var(--txt)}
+#help{position:fixed;bottom:34px;left:50%;transform:translateX(-50%);display:flex;gap:16px;padding:9px 16px;
+  font-size:12px;color:var(--dim);z-index:10;white-space:nowrap}
+#help span{display:flex;align-items:center;gap:6px}
+#help kbd{font-size:11px;padding:2px 6px}
+#cross{position:fixed;left:50%;top:50%;width:26px;height:26px;transform:translate(-50%,-50%);pointer-events:none;z-index:9;opacity:.7}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.6)}
+#cross:before{left:12px;top:0;width:2px;height:26px} #cross:after{top:12px;left:0;height:2px;width:26px}
+#msg{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);padding:26px 38px;text-align:center;z-index:15}
+#msg .t{font-size:34px;font-weight:800;letter-spacing:-.02em}
+#msg .s{color:var(--dim);margin-top:8px;font-size:15px}
+.cesium-viewer-bottom{display:block;opacity:.7}
+#mapBox{position:fixed;right:16px;bottom:16px;width:260px;height:260px;padding:5px;z-index:10}
+#mini{width:100%;height:100%;border-radius:12px;overflow:hidden;background:#1b2130}
+.me{width:30px;height:30px;transform-origin:50% 50%;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
+.me svg{display:block}
+.leaflet-control-attribution{font-size:9px!important}
+@media (max-width:700px){#mapBox{width:150px;height:150px}}
+</style></head><body>
+<div id="v"></div>
+
+<div id="hud" class="glass hide">
+  <div class="big" id="spd">0<small>km/h</small></div>
+  <div class="stats">
+    <div class="stat"><div class="l">Height</div><div class="n" id="alt">0 m</div></div>
+    <div class="stat"><div class="l">Time</div><div class="n" id="tim">0.0s</div></div>
+    <div class="stat"><div class="l">Rings</div><div class="n" id="rng">0/10</div></div>
+    <div class="stat"><div class="l">Boost</div><div class="n" id="bst">off</div></div>
+  </div>
+  <div class="bar"><i id="rbar"></i></div>
+</div>
+<div id="place" class="glass hide"></div>
+<div id="cross" class="hide"></div>
+<div id="mapBox" class="glass hide"><div id="mini"></div></div>
+<div id="help" class="glass hide">
+  <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
+  <span><kbd>←</kbd><kbd>→</kbd> turn</span>
+  <span><kbd>↑</kbd><kbd>↓</kbd> look</span>
+  <span><kbd>Space</kbd><kbd>Shift</kbd> up/down</span>
+  <span><kbd>E</kbd> boost</span>
+  <span><kbd>R</kbd> restart</span>
+  <span><kbd>M</kbd> new place</span>
+</div>
+<div id="msg" class="glass hide"><div class="t" id="msgT"></div><div class="s" id="msgS"></div></div>
+
+<div id="loading" class="hide"><div class="spin"></div><div id="loadTxt">Loading the world…</div><div id="loadSub"></div></div>
+
+<div id="menu">
+  <div class="brand"><div class="logo">🚁</div><h1>Drone Earth</h1></div>
+  <p class="tag">Fly a drone anywhere on the real planet.</p>
+  <div class="searchWrap">
+    <div class="search">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="addr" autofocus autocomplete="off" spellcheck="false" placeholder="Search any address or place…">
+      <button id="goBtn">Fly here</button>
+    </div>
+    <div id="sugg"></div>
+  </div>
+  <div id="err"></div>
+  <div class="keys glass">
+    <div><kbd>W</kbd><kbd>S</kbd> forward / back</div>
+    <div><kbd>A</kbd><kbd>D</kbd> slide</div>
+    <div><kbd>←</kbd><kbd>→</kbd> turn</div>
+    <div><kbd>↑</kbd><kbd>↓</kbd> look up / down</div>
+    <div><kbd>Space</kbd> up</div>
+    <div><kbd>Shift</kbd> down</div>
+    <div><kbd>E</kbd> boost</div>
+    <div><kbd>M</kbd> new place</div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const showEl=(id,on)=>$(id).classList.toggle('hide',!on);
+const ION_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6InVVbkZHSG5sWWRTbmxwS0kiLCJqdGkiOiJiYTczYTdjZC1hYTExLTQ5YWEtYTgxOS00ODUyOTcxMzUwZDQiLCJpZCI6NTQwMzc4LCJzdWIiOiJnc3RhdnlhIiwiaXNzIjoiaHR0cHM6Ly9hcGkuY2VzaXVtLmNvbSIsImF1ZCI6IlVudGl0bGVkIiwiaWF0IjoxNzkzNTU0MDcxfQ.HF7Jgf3WKy5MO8A3RjrZII9viOPopONS0DKCcK0mVhU';
+let tileset, viewer, origin, frame, drone, rings=[], st, keys={}, running=false, placeName='';
+addEventListener('keydown',e=>{
+  if(document.activeElement===$('addr'))return;
+  keys[e.code]=true;
+  if(!running)return;
+  if(e.code==='KeyR')reset();
+  if(e.code==='KeyM')openMenu();
+  if(e.code==='Space'||e.code.startsWith('Arrow'))e.preventDefault();});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('blur',()=>keys={});
+
+function openMenu(){
+  running=false; keys={};
+  ['hud','help','cross','place','msg','mapBox'].forEach(id=>showEl(id,false));
+  showEl('menu',true); $('menu').classList.add('over'); $('addr').select(); $('addr').focus();
+}
+
+// ----- search: Google (through Cesium) for exact addresses + OpenStreetMap (Photon) for more choices -----
+let sugg=[], sel=-1, typeTimer, reqN=0;
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function showSugg(){
+  $('sugg').innerHTML=sugg.map((x,i)=>`<div class="opt${i===sel?' on':''}" data-i="${i}">
+    <div class="pin">${x.icon}</div><div class="mid"><div class="t">${esc(x.title)}</div><div class="s">${esc(x.sub)}</div></div>
+    ${x.src?`<span class="src">${x.src}</span>`:''}</div>`).join('');
+  $('sugg').querySelectorAll('.opt').forEach(d=>d.onmousedown=e=>{e.preventDefault();pick(+d.dataset.i);});
+}
+function pick(i){const x=sugg[i]; $('addr').value=x.title+(x.sub?', '+x.sub:''); sugg=[]; showSugg(); $('addr').blur();
+  fly(x.lat,x.lon,x.title);}
+const bboxMid=b=>[(b[1]+b[3])/2,(b[0]+b[2])/2];
+async function googleLookup(q,ep){ // ep = 'autocomplete' or 'search'
+  const r=await fetch(`https://api.cesium.com/v1/geocode/${ep}?geocoder=google&text=${encodeURIComponent(q)}&access_token=${ION_KEY}`);
+  return ((await r.json()).features||[]).map(f=>{
+    const [lat,lon]=f.geometry&&f.geometry.coordinates?[f.geometry.coordinates[1],f.geometry.coordinates[0]]:bboxMid(f.bbox);
+    const parts=f.properties.label.split(', ');
+    return {title:parts[0],sub:parts.slice(1).join(', '),lat,lon,icon:'📍',src:'Google'};});
+}
+async function photonLookup(q){
+  const r=await fetch('https://photon.komoot.io/api/?limit=7&q='+encodeURIComponent(q));
+  return ((await r.json()).features||[]).map(g=>{const p=g.properties;
+    const street=[p.housenumber,p.street].filter(Boolean).join(' ');
+    const title=p.name||street||p.city||'?';
+    const sub=[p.name?street:'',p.city,p.state,p.country].filter(Boolean).join(', ');
+    const icon=p.housenumber?'🏠':/city|town|village/.test(p.type||'')?'🏙️':'📌';
+    return {title,sub,lat:g.geometry.coordinates[1],lon:g.geometry.coordinates[0],icon};});
+}
+async function fetchSugg(q){
+  const n=++reqN;
+  const [g,o]=await Promise.all([googleLookup(q,'autocomplete').catch(()=>[]),photonLookup(q).catch(()=>[])]);
+  if(n!==reqN)return;
+  const seen=new Set(); sugg=[];
+  [...g,...o].forEach(x=>{const k=(x.title+'|'+x.sub).toLowerCase(); if(seen.has(k))return; seen.add(k); sugg.push(x);});
+  sugg=sugg.slice(0,7); sel=-1; showSugg();
+}
+$('addr').addEventListener('input',()=>{clearTimeout(typeTimer); $('err').textContent=''; const q=$('addr').value.trim();
+  if(q.length<3){reqN++;sugg=[];showSugg();return;} typeTimer=setTimeout(()=>fetchSugg(q),220);});
+$('addr').addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'&&sugg.length){sel=(sel+1)%sugg.length;showSugg();e.preventDefault();}
+  else if(e.key==='ArrowUp'&&sugg.length){sel=(sel-1+sugg.length)%sugg.length;showSugg();e.preventDefault();}
+  else if(e.key==='Enter'){ if(sugg.length)pick(Math.max(sel,0)); else goAddr(); }
+  else if(e.key==='Escape'){sugg=[];showSugg();}
+});
+$('addr').addEventListener('blur',()=>setTimeout(()=>{sugg=[];showSugg();},150));
+$('goBtn').onclick=()=>{ if(sugg.length)pick(Math.max(sel,0)); else goAddr(); };
+
+async function goAddr(){
+  const q=$('addr').value.trim(); if(!q){$('addr').focus();return;}
+  try{
+    const g=await googleLookup(q,'search');
+    if(!g.length){$('err').textContent="Couldn't find that place. Try adding the city.";return;}
+    fly(g[0].lat,g[0].lon,g[0].title);
+  }catch(e){$('err').textContent='Search failed: '+(e.message||e);}
+}
+
+async function fly(lat,lon,name){
+  placeName=name||''; $('err').textContent='';
+  showEl('loading',true); $('loadTxt').textContent='Flying to '+(placeName||'your spot')+'…'; $('loadSub').textContent='Loading the 3D world';
+  Cesium.Ion.defaultAccessToken=ION_KEY;
+  try{
+    if(!viewer){
+      viewer=new Cesium.Viewer('v',{globe:false,baseLayerPicker:false,geocoder:false,homeButton:false,
+        sceneModePicker:false,navigationHelpButton:false,animation:false,timeline:false,fullscreenButton:false,
+        infoBox:false,selectionIndicator:false,skyAtmosphere:new Cesium.SkyAtmosphere()});
+      viewer.scene.preRender.addEventListener(tick);
+    }
+    if(!tileset){
+      tileset=viewer.scene.primitives.add(await Cesium.createGooglePhotorealistic3DTileset());
+      viewer.scene.screenSpaceCameraController.enableInputs=false;
+    }
+    const carto=Cesium.Cartographic.fromDegrees(lon,lat);
+    // look down from above the spot, wait for the 3D world to load, then find the real ground height
+    viewer.camera.setView({destination:Cesium.Cartesian3.fromRadians(carto.longitude,carto.latitude,1500),
+      orientation:{heading:0,pitch:-Math.PI/2,roll:0}});
+    const t0=Date.now();
+    await new Promise(r=>setTimeout(r,500));
+    while(!tileset.tilesLoaded&&Date.now()-t0<20000)await new Promise(r=>setTimeout(r,200));
+    $('loadSub').textContent='Finding the ground';
+    let h;
+    try{const s=await viewer.scene.sampleHeightMostDetailed([new Cesium.Cartographic(carto.longitude,carto.latitude)]);h=s[0].height;}catch(e){}
+    if(h===undefined||h===null||isNaN(h)){
+      const hit=viewer.scene.pickPosition(new Cesium.Cartesian2(viewer.canvas.clientWidth/2,viewer.canvas.clientHeight/2));
+      h=hit?Cesium.Cartographic.fromCartesian(hit).height:300;
+    }
+    origin=Cesium.Cartesian3.fromRadians(carto.longitude,carto.latitude,h);
+    frame=Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+    makeDrone(); reset();
+    $('place').innerHTML='📍 <b></b>'; $('place').querySelector('b').textContent=placeName||`${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    showEl('loading',false); showEl('menu',false);
+    ['hud','help','cross','place','mapBox'].forEach(id=>showEl(id,true));
+    initMap(lat,lon);
+    running=true;
+  }catch(e){showEl('loading',false); $('err').textContent='Error: '+(e.message||e);}
+}
+
+// ----- mini map (OpenStreetMap) with you as a red dot -----
+let mini, meDot, ringDots=[], mapT=0;
+function initMap(lat,lon){
+  if(!mini){
+    mini=L.map('mini',{zoomControl:false,attributionControl:true,dragging:false,scrollWheelZoom:false,
+      doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false}).setView([lat,lon],16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mini);
+    meDot=L.marker([lat,lon],{icon:L.divIcon({className:'',html:'<div class="me" id="meArrow"><svg viewBox="0 0 100 100" width="30" height="30"><path d="M50 6 Q53 6 55 10 L91 84 Q94 92 86 89 L56 76 Q50 74 44 76 L14 89 Q6 92 9 84 L45 10 Q47 6 50 6 Z" fill="#e8322a" stroke="#fff" stroke-width="5" stroke-linejoin="round"/></svg></div>',iconSize:[30,30],iconAnchor:[15,15]}),zIndexOffset:1000}).addTo(mini);
+  }
+  mini.invalidateSize(); mini.setView([lat,lon],16,{animate:false}); drawRingDots();
+}
+function toLatLon(x,y,z){const c=Cesium.Cartographic.fromCartesian(enu(x,y,z));return [Cesium.Math.toDegrees(c.latitude),Cesium.Math.toDegrees(c.longitude)];}
+function drawRingDots(){
+  if(!mini)return; ringDots.forEach(d=>d.remove());
+  ringDots=rings.map((r,i)=>L.circleMarker(toLatLon(r.x,r.y,r.z),{radius:5,weight:2,color:'#000',
+    fillColor:i<st.next?'#3ddc84':'#ffd400',fillOpacity:1}).addTo(mini));
+}
+function updateMap(){
+  if(!mini||!st)return; const ll=toLatLon(st.x,st.y,st.z);
+  meDot.setLatLng(ll); mini.panTo(ll,{animate:false});
+  const a=$('meArrow'); if(a)a.style.transform=`rotate(${90-st.yaw*180/Math.PI}deg)`; // point the way you're facing
+}
+
+function enu(x,y,z){return Cesium.Matrix4.multiplyByPoint(frame,new Cesium.Cartesian3(x,y,z),new Cesium.Cartesian3());}
+
+let parts=[];
+function makeDrone(){ drone={set show(v){}}; } // no drone body: you ARE the camera
+
+function makeRings(){
+  rings.forEach(r=>viewer.entities.remove(r.e)); rings=[];
+  let x=0,y=0,z=25,a=Math.PI/2;
+  for(let i=0;i<10;i++){
+    a+=(Math.random()-.5)*1.4; x+=Math.cos(a)*150; y+=Math.sin(a)*150; z=Math.max(20,z+(Math.random()-.4)*25);
+    const pts=[]; for(let k=0;k<=32;k++){const t=k/32*2*Math.PI;
+      pts.push(enu(x+Math.cos(a+Math.PI/2)*Math.cos(t)*5,y+Math.sin(a+Math.PI/2)*Math.cos(t)*5,z+Math.sin(t)*5));}
+    const e=viewer.entities.add({polyline:{positions:pts,width:6,material:Cesium.Color.YELLOW}});
+    rings.push({x,y,z,e,done:false});
+  }
+}
+
+function reset(){
+  st={look:-0.12,x:0,y:0,z:8,vx:0,vy:0,vz:0,yaw:Math.PI/2,pitch:0,roll:0,t:0,next:0,crashed:false,won:false,last:performance.now()};
+  makeRings(); showEl('msg',false); drawRingDots();
+}
+
+function show(t,sub){$('msgT').textContent=t;$('msgS').textContent=sub||'';showEl('msg',true);}
+
+function tick(){
+  if(!running||!st)return;
+  const now=performance.now(), dt=Math.min(.05,(now-st.last)/1000); st.last=now;
+  if(!st.crashed&&!st.won){
+    st.t+=dt;
+    const fwd=(keys.KeyW?1:0)-(keys.KeyS?1:0), side=(keys.KeyD?1:0)-(keys.KeyA?1:0);
+    const up=(keys.Space?1:0)-(keys.ShiftLeft||keys.ShiftRight?1:0);
+    st.look=Math.max(-1.5,Math.min(1.2,st.look+((keys.ArrowUp?1:0)-(keys.ArrowDown?1:0))*1.2*dt));
+    st.yaw+=((keys.ArrowLeft?1:0)-(keys.ArrowRight?1:0))*2.2*dt;
+    const boost=keys.KeyE?2:1, acc=55*boost, cy=Math.cos(st.yaw), sy=Math.sin(st.yaw);
+    st.vx+=(cy*fwd+sy*side)*acc*dt; st.vy+=(sy*fwd-cy*side)*acc*dt; st.vz+=up*100*boost*dt;
+    const drag=Math.pow(.33,dt); st.vx*=drag; st.vy*=drag; st.vz*=Math.pow(.1,dt);
+    st.x+=st.vx*dt; st.y+=st.vy*dt; st.z+=st.vz*dt;
+    st.pitch+=((-fwd*.35)-st.pitch)*Math.min(1,dt*6); st.roll+=((side*.3)-st.roll)*Math.min(1,dt*6);
+    // crash check against the real world (buildings, trees, ground)
+    const p=enu(st.x,st.y,st.z), c=Cesium.Cartographic.fromCartesian(p);
+    const gh=viewer.scene.sampleHeight(c,[...parts,...rings.map(r=>r.e)]);
+    if(gh!==undefined&&c.height<gh+0.4){
+      if(Math.hypot(st.vx,st.vy,st.vz)>10){st.crashed=true;show('💥 Crashed!','Press R to try again · M for a new place');}
+      else{st.z+=gh+0.4-c.height;st.vz=Math.max(0,st.vz);}
+    }
+    const r=rings[st.next];
+    if(r&&Math.hypot(st.x-r.x,st.y-r.y,st.z-r.z)<5.5){
+      r.e.polyline.material=Cesium.Color.LIME; st.next++; drawRingDots();
+      if(st.next===rings.length){st.won=true;show('🏁 '+st.t.toFixed(1)+'s','All 10 rings! Press R to go again');}
+    }
+    rings.forEach((q,i)=>{if(i===st.next)q.e.polyline.width=10;});
+  }
+  // camera = the drone itself (first-person). It tilts a bit with the drone.
+  viewer.camera.setView({destination:enu(st.x,st.y,st.z),
+    orientation:{heading:Math.PI/2-st.yaw,pitch:st.look+st.pitch*0.5,roll:st.roll*0.5}});
+  const sp=Math.hypot(st.vx,st.vy)*3.6;
+  if(now-mapT>100){mapT=now;updateMap();}
+  $('spd').innerHTML=sp.toFixed(0)+'<small>km/h</small>';
+  $('alt').textContent=st.z.toFixed(0)+' m'; $('tim').textContent=st.t.toFixed(1)+'s';
+  $('rng').textContent=st.next+'/'+rings.length; $('rbar').style.width=(st.next/rings.length*100)+'%';
+  $('bst').textContent=keys.KeyE?'ON':'off'; $('bst').style.color=keys.KeyE?'#ffb648':'';
+}
+</script></body></html>
